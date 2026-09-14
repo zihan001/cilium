@@ -1639,10 +1639,20 @@ snat_v6_rewrite_headers(struct __ctx_buff *ctx, __u8 nexthdr, int l3_off,
 	if (err < 0)
 		return err;
 
-	if (has_l4_header)
-		return l4_rewrite_port_and_csum(ctx, nexthdr, l4_off, port_off,
-						old_port, new_port, sum,
-						l4_csum_diff_from_inner);
+	if (has_l4_header) {
+		err = l4_rewrite_port_and_csum(ctx, nexthdr, l4_off, port_off,
+					       old_port, new_port, sum, 0);
+		if (err < 0)
+			return err;
+
+		/* Apply the diff for the embedded packet of an ICMPv6 error to
+		 * the outer ICMPv6 checksum. Only set when nexthdr is ICMPv6.
+		 */
+		if (l4_csum_diff_from_inner &&
+		    l4_csum_replace(ctx, l4_off + offsetof(struct icmp6hdr, icmp6_cksum),
+				    0, l4_csum_diff_from_inner, 0) < 0)
+			return DROP_CSUM_L4;
+	}
 
 	return 0;
 }
